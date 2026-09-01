@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudport-service-a
+  namespace: cloudport
+  labels:
+    cloudport.io/infrastructure: baseline
+    cloudport.io/protected: "true"
+spec:
+  selector:
+    app: cloudport-app-a
+  ports:
+    - name: http
+      port: 80
+      targetPort: 4000
+  type: ClusterIP

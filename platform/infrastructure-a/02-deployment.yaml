@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudport-app-a
+  namespace: cloudport
+  labels:
+    app: cloudport-app-a
+    cloudport.io/infrastructure: baseline
+    cloudport.io/protected: "true"
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: cloudport-app-a
+
+  template:
+    metadata:
+      labels:
+        app: cloudport-app-a
+        cloudport.io/infrastructure: baseline
+
+    spec:
+      containers:
+        - name: cloudport-app
+          image: cloudport:1.0.0
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 4000
+
+          env:
+            - name: PORT
+              value: "4000"
+
+            - name: APP_VERSION
+              value: "cloudport:1.0.0"
+
+            - name: INFRA_IDENTITY
+              value: "infrastructure-a"
+
+            - name: CLOUDPORT_STORAGE_MOUNT
+              value: "/data"
+
+            - name: DATABASE_URL
+              value: "postgres://cloudport:kalyan%40143@host.docker.internal:5432/cloudport"
+
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 4000
+            initialDelaySeconds: 3
+            periodSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+
+          volumeMounts:
+            - name: storage
+              mountPath: /data
+
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: cloudport-storage-a

@@ -1,0 +1,43 @@
+# Local development stack: PostgreSQL + the CloudPort backend API.
+# This is for LOCAL DEVELOPMENT convenience only -- Infrastructure A/B
+# themselves are Kubernetes deployments (see platform/), not docker-compose
+# services, since the entire point of the experiment is to compare two
+# Kubernetes infrastructure configurations.
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cloudport-postgres
+    environment:
+      POSTGRES_DB: cloudport
+      POSTGRES_USER: cloudport
+      POSTGRES_PASSWORD: changeme
+    ports:
+      - "5432:5432"
+    volumes:
+      - cloudport-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudport -d cloudport"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloudport-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://cloudport:changeme@postgres:5432/cloudport
+      PORT: 4000
+      APP_VERSION: cloudport:1.0.0
+      INFRA_IDENTITY: docker-compose-local
+    ports:
+      - "4000:4000"
+
+volumes:
+  cloudport-pg-data:

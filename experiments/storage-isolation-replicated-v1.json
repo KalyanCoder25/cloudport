@@ -1,0 +1,43 @@
+{
+  "name": "storage-isolation-replicated-v1",
+  "description": "Controlled comparison of application behavior under Infrastructure A (baseline storage) vs Infrastructure B (alternate storage substrate/path allocation), with the storage substrate as the sole intended variable.",
+  "application": {
+    "name": "cloudport-app",
+    "version": "cloudport:1.0.0"
+  },
+  "workload": {
+    "type": "STORAGE",
+    "concurrency": 5,
+    "operationCount": 200,
+    "prngSeed": 987654
+  },
+  "resourceEnvelope": {
+    "cpu": "2.0",
+    "memory": "4Gi"
+  },
+  "controlledVariable": "STORAGE",
+  "targetDimension": "STORAGE",
+  "excludedDimensions": ["NETWORK", "CPU", "MEMORY", "APPLICATION", "WORKLOAD"],
+  "replication": {
+    "pairedTrials": 3,
+    "note": "Each 'paired trial' is one Infrastructure-A run and one Infrastructure-B run executed with identical workload parameters and seed."
+  },
+  "invariants": {
+    "applicationVersion": "cloudport:1.0.0",
+    "workloadType": "STORAGE",
+    "concurrency": 5,
+    "operationCount": 200,
+    "prngSeed": 987654,
+    "cpuEnvelope": "2.0",
+    "memoryEnvelope": "4Gi",
+    "targetDimension": "STORAGE",
+    "excludedDimensions": ["APPLICATION", "CPU", "MEMORY", "NETWORK", "WORKLOAD"]
+  },
+  "safety": {
+    "requireParityValidation": true,
+    "requireInfrastructureBHealthy": true,
+    "requireInfrastructureAHealthy": true,
+    "requireTelemetryPipelineReady": true,
+    "minimumTrialsForReplicationClaim": 2
+  }
+}

@@ -1,0 +1,31 @@
+# Infrastructure B storage substrate variation.
+#
+# TERMINOLOGY NOTE (load-bearing): this StorageClass implements a
+# "storage substrate / path allocation difference" from Infrastructure A's
+# default StorageClass. It does NOT implement IOPS throttling, bandwidth
+# throttling, or kernel-level block-device throttling of any kind. No such
+# mechanism exists in this repository. Do not describe results from this
+# StorageClass using throttling language unless a real throttling mechanism
+# is implemented and independently measured.
+#
+# This uses the same rancher.io/local-path provisioner as the cluster default
+# in a stock Kind cluster, but as its own named StorageClass with
+# WaitForFirstConsumer binding, so that Infrastructure B's volume is
+# provisioned as a distinct object from Infrastructure A's, satisfying the
+# "controlled variable = STORAGE" requirement without inventing unverified
+# node-path parameters.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: standard-throttled
+  labels:
+    cloudport.io/infrastructure: variant-b
+provisioner: rancher.io/local-path
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+# IMPORTANT: no `parameters.nodePath` is set here. A custom nodePath requires
+# the local-path-provisioner ConfigMap to explicitly define a matching path
+# entry; without that, pods would fail to schedule (PVC stuck Pending). Per
+# the CloudPort safety spec, we do NOT set nodePath unless that provisioner
+# configuration has been created and verified in the target environment.
+# validator.js rejects any manifest here that sets an unregistered nodePath.

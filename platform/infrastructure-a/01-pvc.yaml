@@ -1,0 +1,19 @@
+# Infrastructure A (baseline) storage claim.
+# Uses whatever the cluster's default StorageClass is (Kind's local-path-provisioner
+# in a standard Kind/Korifi setup). Do NOT set storageClassName here -- Infrastructure
+# A is defined precisely as "the cluster default", so it must never be pinned to a
+# StorageClass name that could drift out of sync with the actual default.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cloudport-storage-a
+  namespace: cloudport
+  labels:
+    cloudport.io/infrastructure: baseline
+    cloudport.io/protected: "true"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi

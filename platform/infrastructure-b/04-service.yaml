@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudport-service-b
+  namespace: cloudport
+  labels:
+    cloudport.io/infrastructure: variant-b
+spec:
+  selector:
+    app: cloudport-app-b
+  ports:
+    - name: http
+      port: 80
+      targetPort: 4000
+  type: ClusterIP

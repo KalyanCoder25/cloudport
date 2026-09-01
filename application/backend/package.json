@@ -1,0 +1,16 @@
+{
+  "name": "cloudport-backend",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/**/*.test.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.11.5",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0"
+  }
+}

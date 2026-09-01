@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cloudport-storage-b
+  namespace: cloudport
+  labels:
+    cloudport.io/infrastructure: variant-b
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard-throttled
+  resources:
+    requests:
+      storage: 2Gi

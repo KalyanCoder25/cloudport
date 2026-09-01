@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+.git
+.env
+*.log
+npm-debug.log*
+dist
+build
+coverage
+application/frontend/node_modules
+application/frontend/dist
+CloudPort-Final.zip

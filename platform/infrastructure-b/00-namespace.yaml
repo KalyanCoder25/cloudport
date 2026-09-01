@@ -1,0 +1,12 @@
+# Infrastructure B shares the 'cloudport' namespace with Infrastructure A.
+# This manifest is idempotent (kubectl apply is a no-op if the namespace
+# already exists from Infrastructure A). provision.sh never deletes this
+# namespace, and cleanup.sh's Infrastructure B teardown never deletes it
+# either -- only Infrastructure B's own PVC/Deployment/Service/StorageClass
+# are removed on cleanup.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cloudport
+  labels:
+    cloudport.io/protected: "true"
