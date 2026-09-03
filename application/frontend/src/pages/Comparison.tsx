@@ -48,6 +48,7 @@ export default function Comparison() {
           loading={behaviour.loading}
           error={behaviour.error}
           data={behaviour.data}
+          empty="No behaviour comparisons recorded yet. Execute an experiment to compare Infrastructure A and B."
           render={(data) => (
             <table>
               <thead>

@@ -44,6 +44,23 @@ function request(server, method, path, body) {
   });
 }
 
+test('GET / returns backend service descriptor without touching the database', async () => {
+  const app = createApp({ query: async () => { throw new Error('should not be called'); } });
+  const server = await startServer(app);
+  try {
+    const res = await request(server, 'GET', '/');
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body, {
+      service: 'cloudport-backend',
+      version: 'cloudport:1.0.0',
+      health: '/health',
+      api: '/api/analyzer/experiments',
+    });
+  } finally {
+    server.close();
+  }
+});
+
 test('GET /health returns ok without touching the database', async () => {
   const app = createApp({ query: async () => { throw new Error('should not be called'); } });
   const server = await startServer(app);

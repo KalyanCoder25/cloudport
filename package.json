@@ -8,17 +8,17 @@
     "application/frontend"
   ],
   "scripts": {
-    "db:migrate": "node application/database/migrate.js up",
-    "db:migrate:down": "node application/database/migrate.js down",
-    "db:seed": "node application/database/seed.js",
-    "db:status": "node application/database/migrate.js status",
-    "test": "node --test tests/**/*.test.js",
-    "test:unit": "node --test tests/unit/*.test.js",
-    "test:api": "node --test tests/api/*.test.js",
-    "test:safety": "node --test tests/safety/*.test.js",
+    "db:migrate": "node --env-file=.env application/database/migrate.js up",
+    "db:migrate:down": "node --env-file=.env application/database/migrate.js down",
+    "db:seed": "node --env-file=.env application/database/seed.js",
+    "db:status": "node --env-file=.env application/database/migrate.js status",
+    "test": "node --env-file=.env --test tests/**/*.test.js",
+    "test:unit": "node --env-file=.env --test tests/unit/*.test.js",
+    "test:api": "node --env-file=.env --test tests/api/*.test.js",
+    "test:safety": "node --env-file=.env --test tests/safety/*.test.js",
     "lint": "eslint application/backend/src analyzer platform --ext .js",
     "build": "npm run build --workspace application/frontend",
-    "dev:backend": "node application/backend/src/server.js",
+    "dev:backend": "node --env-file=.env application/backend/src/server.js",
     "dev:frontend": "npm run dev --workspace application/frontend"
   },
   "dependencies": {

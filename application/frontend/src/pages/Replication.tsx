@@ -21,6 +21,7 @@ export default function Replication() {
           loading={replication.loading}
           error={replication.error}
           data={replication.data}
+          empty="No replication analysis recorded yet for this experiment."
           render={(data) => (
             <table>
               <thead>

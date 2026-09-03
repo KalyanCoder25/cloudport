@@ -29,6 +29,7 @@ const { generateEvidenceArtifacts } = require('../../../analyzer/evidence/artifa
 const { generateReport } = require('../../../analyzer/evidence/reportGenerator');
 const { runStorageWorkload } = require('./workload');
 const { getStorageMountPath } = require('./config');
+const { createExperimentRunner, ExperimentRunner } = require('./experimentRunner');
 
 function createApp(deps = {}) {
   const app = express();
@@ -37,6 +38,24 @@ function createApp(deps = {}) {
   app.use(express.json());
 
   const query = deps.query || (() => { throw new Error('No database query function configured'); });
+  const runner =
+    deps.experimentRunner ||
+    deps.runner ||
+    createExperimentRunner({
+      query,
+      inspector: deps.inspector,
+      runWorkload: deps.runWorkload,
+      getStorageMountPath: deps.getStorageMountPath,
+    });
+
+  app.get('/', (req, res) => {
+    res.json({
+      service: 'cloudport-backend',
+      version: process.env.APP_VERSION || 'cloudport:1.0.0',
+      health: '/health',
+      api: '/api/analyzer/experiments',
+    });
+  });
 
   app.get('/health', (req, res) => {
     res.json({ status: 'ok', service: 'cloudport-backend', version: process.env.APP_VERSION || 'cloudport:1.0.0' });
@@ -116,6 +135,21 @@ function createApp(deps = {}) {
     }
   });
 
+  app.post('/api/analyzer/experiments/:id/validate', async (req, res, next) => {
+    try {
+      const result = await runner.validateParity(req.params.id);
+      if (result.status === 'FAILED_VALIDATION') {
+        return res.status(422).json(result);
+      }
+      res.json(result);
+    } catch (err) {
+      if (err.message && err.message.includes('not found')) {
+        return res.status(404).json({ error: err.message });
+      }
+      next(err);
+    }
+  });
+
   app.post('/api/analyzer/experiments/:id/run', async (req, res, next) => {
     try {
       const expResult = await query('SELECT * FROM experiments WHERE id = $1', [req.params.id]);
@@ -139,14 +173,14 @@ function createApp(deps = {}) {
       }
 
       await query('UPDATE experiments SET status = $1, updated_at = now() WHERE id = $2', ['RUNNING', experiment.id]);
-      // NOTE (integration contract): this route currently only transitions
-      // experiment status to RUNNING; the paired-trial orchestration loop
-      // that will actually invoke runStorageWorkload() for each A/B trial is
-      // a separate, not-yet-built component. When that loop is implemented,
-      // it MUST obtain its storage path via getStorageMountPath() from
-      // ./config.js -- the exact same accessor used by POST /api/workload/run
-      // -- so the path exercised by a real experiment trial and the path
-      // exercised by an ad-hoc workload run are never allowed to diverge.
+
+      // Execute paired trials and analysis pipeline asynchronously in the runner.
+      // Catches background errors so they don't produce uncaught promise rejections.
+      runner.executeExperiment(experiment.id).catch((_err) => {
+        // Background failure is recorded in the database (experiment status set to ABORTED)
+        // by the runner itself.
+      });
+
       res.status(202).json({ status: 'RUNNING', experimentId: experiment.id });
     } catch (err) {
       next(err);
@@ -213,7 +247,7 @@ function createApp(deps = {}) {
       const experiment = expResult.rows[0];
       const executed = experiment.status === 'COMPLETED';
 
-      const report = generateReport({
+      let reportContext = {
         experiment: {
           name: experiment.name,
           description: experiment.manifest?.description,
@@ -225,7 +259,52 @@ function createApp(deps = {}) {
           workload: experiment.manifest?.workload,
         },
         executed,
-      });
+      };
+
+      if (executed) {
+        const snapsRes = await query(
+          'SELECT * FROM infrastructure_snapshots WHERE experiment_id = $1 ORDER BY infrastructure ASC',
+          [experiment.id]
+        );
+        const diffsRes = await query(
+          'SELECT * FROM infrastructure_differences WHERE experiment_id = $1 ORDER BY dimension ASC',
+          [experiment.id]
+        );
+        const behRes = await query(
+          'SELECT * FROM behaviour_comparisons WHERE experiment_id = $1 ORDER BY metric ASC',
+          [experiment.id]
+        );
+        const replRes = await query(
+          'SELECT * FROM replication_analysis WHERE experiment_id = $1 ORDER BY created_at DESC LIMIT 1',
+          [experiment.id]
+        );
+        const leakRes = await query(
+          'SELECT * FROM leakage_findings WHERE experiment_id = $1 ORDER BY created_at DESC LIMIT 1',
+          [experiment.id]
+        );
+        const snapA = snapsRes.rows.find((s) => s.infrastructure === 'A');
+        const snapB = snapsRes.rows.find((s) => s.infrastructure === 'B');
+
+        reportContext = {
+          ...reportContext,
+          infrastructureA: snapA?.profile,
+          infrastructureB: snapB?.profile,
+          infrastructureDifferences: diffsRes.rows.map((r) => ({
+            dimension: r.dimension,
+            differenceFound: r.difference_found,
+            detail: r.detail,
+          })),
+          behaviourComparison: behRes.rows,
+          replicationAnalysis: replRes.rows[0],
+          leakageAnalysis: leakRes.rows[0],
+          causalGovernance: {
+            classification: replRes.rows[0]?.classification || 'INSUFFICIENT_DATA',
+            rationale: leakRes.rows[0]?.rationale || 'Report generated from persisted evidence.',
+          },
+        };
+      }
+
+      const report = generateReport(reportContext);
       res.type('text/markdown').send(report);
     } catch (err) {
       next(err);
@@ -250,6 +329,22 @@ function createApp(deps = {}) {
   app.get('/api/analyzer/trials/:trialId/telemetry', async (req, res, next) => {
     try {
       const result = await query('SELECT * FROM telemetry WHERE trial_id = $1', [req.params.trialId]);
+      res.json(result.rows);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.get('/api/analyzer/experiments/:id/telemetry', async (req, res, next) => {
+    try {
+      const result = await query(
+        `SELECT t.*, et.trial_index, et.infrastructure
+         FROM telemetry t
+         JOIN experiment_trials et ON t.trial_id = et.id
+         WHERE et.experiment_id = $1
+         ORDER BY et.trial_index ASC, et.infrastructure ASC`,
+        [req.params.id]
+      );
       res.json(result.rows);
     } catch (err) {
       next(err);
@@ -307,6 +402,8 @@ function createApp(deps = {}) {
 
 module.exports = {
   createApp,
+  createExperimentRunner,
+  ExperimentRunner,
   // Re-exported for convenience so other modules/tests can reach the analyzer
   // pipeline through the same surface as the HTTP layer.
   analyzer: {

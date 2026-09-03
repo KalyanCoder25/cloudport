@@ -6,12 +6,13 @@ interface AsyncState<T> {
   error: string | null;
 }
 
-export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []): AsyncState<T> {
+export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []): AsyncState<T> & { reload: () => void } {
   const [state, setState] = useState<AsyncState<T>>({ data: null, loading: true, error: null });
+  const [trigger, setTrigger] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    setState({ data: null, loading: true, error: null });
+    setState((prev) => ({ ...prev, loading: true, error: null }));
     fn()
       .then((data) => {
         if (!cancelled) setState({ data, loading: false, error: null });
@@ -23,7 +24,9 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []): AsyncSt
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [...deps, trigger]);
 
-  return state;
+  const reload = () => setTrigger((t) => t + 1);
+
+  return { ...state, reload };
 }

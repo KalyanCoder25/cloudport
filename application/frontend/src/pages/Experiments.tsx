@@ -7,15 +7,34 @@ import { AsyncPanel } from '../components/AsyncPanel';
 export default function Experiments() {
   const experiments = useAsync(() => api.listExperiments(), []);
   const [runningId, setRunningId] = useState<string | null>(null);
-  const [runError, setRunError] = useState<string | null>(null);
+  const [validatingId, setValidatingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function handleValidate(id: string) {
+    setActionError(null);
+    setValidatingId(id);
+    try {
+      await api.validateExperiment(id);
+      experiments.reload();
+    } catch (err: any) {
+      setActionError(err.message || 'Validation failed');
+      experiments.reload();
+    } finally {
+      setValidatingId(null);
+    }
+  }
 
   async function handleRun(id: string) {
-    setRunError(null);
+    setActionError(null);
     setRunningId(id);
     try {
       await api.runExperiment(id);
+      experiments.reload();
+      // Poll briefly to catch status updates from background run
+      setTimeout(() => experiments.reload(), 1500);
+      setTimeout(() => experiments.reload(), 3000);
     } catch (err: any) {
-      setRunError(err.message);
+      setActionError(err.message || 'Run failed');
     } finally {
       setRunningId(null);
     }
@@ -27,7 +46,7 @@ export default function Experiments() {
         title="Experiments"
         subtitle="Execution requires an explicit operator action -- experiments never auto-run after provisioning."
       />
-      {runError && <div className="callout">Run request failed: {runError}</div>}
+      {actionError && <div className="callout">Action failed: {actionError}</div>}
       <div className="panel">
         <AsyncPanel
           loading={experiments.loading}
@@ -42,7 +61,7 @@ export default function Experiments() {
                   <th>Workload</th>
                   <th>Controlled Variable</th>
                   <th>Status</th>
-                  <th></th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -53,13 +72,28 @@ export default function Experiments() {
                     <td>{exp.workload}</td>
                     <td>{exp.controlled_variable}</td>
                     <td>{exp.status}</td>
-                    <td>
-                      <button
-                        disabled={exp.status !== 'READY_FOR_EXECUTION' || runningId === exp.id}
-                        onClick={() => handleRun(exp.id)}
-                      >
-                        {runningId === exp.id ? 'Starting...' : 'Run'}
-                      </button>
+                    <td style={{ display: 'flex', gap: 8 }}>
+                      {(exp.status === 'DRAFT' || exp.status === 'FAILED_VALIDATION') && (
+                        <button
+                          disabled={validatingId === exp.id || runningId === exp.id}
+                          onClick={() => handleValidate(exp.id)}
+                        >
+                          {validatingId === exp.id ? 'Validating...' : 'Validate Parity'}
+                        </button>
+                      )}
+                      {exp.status === 'READY_FOR_EXECUTION' && (
+                        <button
+                          disabled={runningId === exp.id}
+                          onClick={() => handleRun(exp.id)}
+                        >
+                          {runningId === exp.id ? 'Starting...' : 'Run'}
+                        </button>
+                      )}
+                      {(exp.status === 'RUNNING' || exp.status === 'COMPLETED' || exp.status === 'ABORTED') && (
+                        <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                          {exp.status === 'RUNNING' ? 'Executing...' : 'Finished'}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

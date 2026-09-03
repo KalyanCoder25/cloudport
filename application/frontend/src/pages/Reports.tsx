@@ -7,7 +7,7 @@ import { useDefaultExperimentId } from '../api/useDefaultExperimentId';
 
 export default function Reports() {
   const { id } = useDefaultExperimentId();
-  const report = useAsync(() => (id ? api.getReport(id) : Promise.reject(new Error('no experiment'))), [id]);
+  const report = useAsync(() => (id ? api.getReport(id) : Promise.resolve('')), [id]);
 
   return (
     <>
@@ -17,6 +17,7 @@ export default function Reports() {
           loading={report.loading}
           error={report.error}
           data={report.data}
+          empty="No scientific report generated yet."
           render={(markdown) => (
             <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--text-primary)' }}>
               {markdown}

@@ -20,6 +20,7 @@ export default function Evidence() {
           loading={evidence.loading}
           error={evidence.error}
           data={evidence.data}
+          empty="No evidence artifacts generated for this experiment yet."
           render={(data) => (
             <table>
               <thead>

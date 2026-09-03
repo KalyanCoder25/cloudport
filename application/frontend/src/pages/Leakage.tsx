@@ -7,7 +7,7 @@ import { useDefaultExperimentId } from '../api/useDefaultExperimentId';
 
 export default function Leakage() {
   const { id } = useDefaultExperimentId();
-  const leakage = useAsync(() => (id ? api.getLeakage(id) : Promise.reject(new Error('no experiment'))), [id]);
+  const leakage = useAsync(() => (id ? api.getLeakage(id) : Promise.resolve(null)), [id]);
 
   return (
     <>
