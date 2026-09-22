@@ -20,14 +20,14 @@ export default function Leakage() {
           empty="No leakage finding recorded for this experiment yet."
           render={(finding) => (
             <>
-              <div className="metric-grid" style={{ marginBottom: 20 }}>
+              <div className="metric-grid margin-b-20">
                 <div className="metric-cell">
                   <div className="metric-label">Score</div>
                   <div className="metric-value">{finding.score} / 100</div>
                 </div>
                 <div className="metric-cell">
                   <div className="metric-label">Classification</div>
-                  <div className="metric-value" style={{ fontSize: 14 }}>
+                  <div className="metric-value text-14">
                     {finding.classification}
                   </div>
                 </div>
@@ -48,7 +48,7 @@ export default function Leakage() {
                   ))}
                 </tbody>
               </table>
-              <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 16 }}>{finding.rationale}</p>
+              <p className="text-secondary-13-mt16">{finding.rationale}</p>
             </>
           )}
         />

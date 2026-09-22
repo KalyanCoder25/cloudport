@@ -33,6 +33,8 @@ const { InfrastructureInspector, notVerifiedProfile } = require('../../../analyz
 const { latencySummary, mean, median, variance, stddev, coefficientOfVariation } = require('../../../analyzer/telemetry/stats');
 const { runStorageWorkload } = require('./workload');
 const { getStorageMountPath } = require('./config');
+const { dispatchWorkloadToPod, EXECUTION_MODE, MEASUREMENT_SOURCE } = require('../../../analyzer/infrastructure/podWorkloadDispatch');
+const { pairedTTest } = require('../../../analyzer/telemetry/statisticalTests');
 
 class ExperimentRunner {
   /**
@@ -40,7 +42,9 @@ class ExperimentRunner {
    * @param {(sql: string, params?: any[]) => Promise<{ rows: any[], rowCount: number }>} deps.query
    * @param {InfrastructureInspector} [deps.inspector]
    * @param {(config: object) => Promise<object>} [deps.runWorkload]
+   * @param {(params: object) => Promise<object>} [deps.podDispatch]
    * @param {() => string|null} [deps.getStorageMountPath]
+   * @param {'KUBERNETES'|'LOCAL'} [deps.executionMode]
    */
   constructor(deps = {}) {
     if (!deps.query) {
@@ -49,7 +53,20 @@ class ExperimentRunner {
     this.query = deps.query;
     this.inspector = deps.inspector || new InfrastructureInspector();
     this.runWorkload = deps.runWorkload || runStorageWorkload;
+    this.podDispatch = deps.podDispatch || dispatchWorkloadToPod;
     this.getStorageMountPath = deps.getStorageMountPath || getStorageMountPath;
+
+    let defaultMode = 'LOCAL';
+    if (deps.executionMode) {
+      defaultMode = deps.executionMode;
+    } else if (deps.runWorkload && !deps.podDispatch) {
+      defaultMode = 'LOCAL';
+    } else if (process.env.EXECUTION_MODE) {
+      defaultMode = process.env.EXECUTION_MODE;
+    } else {
+      defaultMode = this.inspector?.k8sClient?.isConfigured?.() ? EXECUTION_MODE : 'LOCAL';
+    }
+    this.executionMode = defaultMode;
   }
 
   /**
@@ -118,12 +135,14 @@ class ExperimentRunner {
 
     // 6, 7, 8, 9, 10: Non-target invariant parity evaluation
     const normalizeDim = (dim) => String(dim || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-    const targetDim = normalizeDim(experiment.target_dimension);
+    const targetDims = String(experiment.target_dimension || '')
+      .split(/[,+&|]/)
+      .map((d) => normalizeDim(d.trim()));
 
     // Check every non-target dimension from detectDifferences
     const nonTargetDiffsFound = diffs.filter((d) => {
       const dimName = normalizeDim(d.dimension);
-      return dimName !== targetDim && d.differenceFound;
+      return !targetDims.includes(dimName) && d.differenceFound;
     });
 
     // Build non-target invariant objects for checksum verification
@@ -134,19 +153,19 @@ class ExperimentRunner {
         controlledVariable: experiment.controlled_variable,
         excludedDimensions: experiment.excluded_dimensions,
       };
-      if (targetDim !== 'PLATFORM') invariants.platform = profile.kubernetesVersion;
-      if (targetDim !== 'COMPUTE') invariants.compute = profile.nodes;
-      if (targetDim !== 'STORAGE') invariants.storage = profile.storageClasses;
-      if (targetDim !== 'NETWORK') {
+      if (!targetDims.includes('PLATFORM')) invariants.platform = profile.kubernetesVersion;
+      if (!targetDims.includes('COMPUTE')) invariants.compute = profile.nodes;
+      if (!targetDims.includes('STORAGE')) invariants.storage = profile.storageClasses;
+      if (!targetDims.includes('NETWORK')) {
         invariants.network = {
           networkPolicies: profile.networkPolicies,
           services: profile.services,
           ingressClasses: profile.ingressClasses,
         };
       }
-      if (targetDim !== 'RESOURCEQUOTAS') invariants.resourceQuotas = profile.resourceQuotas;
-      if (targetDim !== 'LIMITRANGES') invariants.limitRanges = profile.limitRanges;
-      if (targetDim !== 'AVAILABILITY') invariants.availability = profile.availability;
+      if (!targetDims.includes('RESOURCEQUOTAS')) invariants.resourceQuotas = profile.resourceQuotas;
+      if (!targetDims.includes('LIMITRANGES')) invariants.limitRanges = profile.limitRanges;
+      if (!targetDims.includes('AVAILABILITY')) invariants.availability = profile.availability;
       return invariants;
     };
 
@@ -224,6 +243,10 @@ class ExperimentRunner {
     const manifest = experiment.manifest || {};
     const workloadSpec = manifest.workload || {};
 
+    const effectiveExecutionMode =
+      manifest.executionMode ||
+      (this.executionMode || 'LOCAL');
+
     let rawReplication = Number(experiment.replication_count);
     if (!Number.isInteger(rawReplication) || rawReplication < 1) {
       rawReplication = Number(manifest.replication?.pairedTrials);
@@ -236,7 +259,7 @@ class ExperimentRunner {
     const rawOpCount = Number(workloadSpec.operationCount);
     const operationCount = Number.isInteger(rawOpCount) && rawOpCount >= 1 ? rawOpCount : 50;
 
-    const rawSeed = Number(workloadSpec.prngSeed);
+    const rawSeed = Number(workloadSpec.prngSeed !== undefined ? workloadSpec.prngSeed : workloadSpec.seed);
     const baseSeed = Number.isInteger(rawSeed) ? rawSeed : 987654;
 
     const trialsA = [];
@@ -261,22 +284,35 @@ class ExperimentRunner {
           });
 
           const trialInsertRes = await this.query(
-            `INSERT INTO experiment_trials (experiment_id, trial_index, infrastructure, seed, status, checksum, started_at)
-             VALUES ($1, $2, $3, $4, $5, $6, now())
-             RETURNING id, experiment_id, trial_index, infrastructure, seed, status, checksum, started_at`,
-            [experiment.id, trialIndex, infra, trialSeed, 'RUNNING', trialChecksum]
+            `INSERT INTO experiment_trials (experiment_id, trial_index, infrastructure, seed, status, checksum, execution_mode, started_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+             RETURNING id, experiment_id, trial_index, infrastructure, seed, status, checksum, execution_mode, started_at`,
+            [experiment.id, trialIndex, infra, trialSeed, 'RUNNING', trialChecksum, effectiveExecutionMode]
           );
           const trial = trialInsertRes.rows[0];
 
           let workloadResult;
+          let provenance = null;
           try {
-            const scratchDir = this.getStorageMountPath() || undefined;
-            workloadResult = await this.runWorkload({
-              seed: trialSeed,
-              concurrency,
-              operationCount,
-              scratchDir,
-            });
+            if (effectiveExecutionMode === 'KUBERNETES') {
+              const dispatchRes = await this.podDispatch({
+                infrastructure: infra,
+                seed: trialSeed,
+                concurrency,
+                operationCount,
+              });
+              workloadResult = dispatchRes.workloadResult;
+              provenance = dispatchRes.provenance;
+            } else {
+              const scratchDir = this.getStorageMountPath() || undefined;
+              workloadResult = await this.runWorkload({
+                seed: trialSeed,
+                concurrency,
+                operationCount,
+                scratchDir,
+                infrastructure: infra,
+              });
+            }
 
             await this.query(
               'UPDATE experiment_trials SET status = $1, finished_at = now() WHERE id = $2',
@@ -299,11 +335,11 @@ class ExperimentRunner {
             `INSERT INTO telemetry (
                trial_id, request_count, success_count, failure_count,
                latencies_ms, throughput_ops_per_sec, errors,
-               p50_ms, p90_ms, p95_ms, p99_ms, max_ms, recorded_at
-             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
+               p50_ms, p90_ms, p95_ms, p99_ms, max_ms, execution_provenance, recorded_at
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())
              RETURNING id, trial_id, request_count, success_count, failure_count,
                        latencies_ms, throughput_ops_per_sec, errors,
-                       p50_ms, p90_ms, p95_ms, p99_ms, max_ms, recorded_at`,
+                       p50_ms, p90_ms, p95_ms, p99_ms, max_ms, execution_provenance, recorded_at`,
             [
               trial.id,
               workloadResult.requestCount,
@@ -317,6 +353,7 @@ class ExperimentRunner {
               stats.p95,
               stats.p99,
               stats.max,
+              provenance ? JSON.stringify(provenance) : null,
             ]
           );
           const telemetryRecord = telemetryInsertRes.rows[0];
@@ -403,7 +440,21 @@ class ExperimentRunner {
         throughput_ops_per_sec: trialsB.map((t) => t.telemetry.throughput_ops_per_sec).filter((v) => v !== null),
       };
 
-      const behaviourComparisons = compareTelemetrySummaries(summaryA, summaryB);
+      // Compute paired t-test for each metric across the aligned paired trials
+      const significanceMap = {};
+      for (const metric of ['p50_ms', 'p90_ms', 'p95_ms', 'p99_ms', 'max_ms', 'throughput_ops_per_sec']) {
+        const valsA = trialsA.map((t) => t.telemetry[metric]).filter((v) => v !== null && v !== undefined);
+        const valsB = trialsB.map((t) => t.telemetry[metric]).filter((v) => v !== null && v !== undefined);
+        if (valsA.length > 0 && valsA.length === valsB.length) {
+          try {
+            significanceMap[metric] = pairedTTest(valsA, valsB);
+          } catch {
+            significanceMap[metric] = null;
+          }
+        }
+      }
+
+      const behaviourComparisons = compareTelemetrySummaries(summaryA, summaryB, significanceMap);
 
       for (const comp of behaviourComparisons) {
         await this.query(
@@ -445,12 +496,25 @@ class ExperimentRunner {
         ? Math.max(...appVisibleResult.meaningfulMetricShifts.map((s) => Math.abs(s.percentChange || 0)))
         : 0;
 
+      const measurementSource = allTelemetryRecords.every((r) => {
+        const prov = typeof r.execution_provenance === 'string'
+          ? JSON.parse(r.execution_provenance)
+          : r.execution_provenance;
+        return prov?.measurementSource === MEASUREMENT_SOURCE;
+      })
+        ? MEASUREMENT_SOURCE
+        : (effectiveExecutionMode === 'KUBERNETES' ? MEASUREMENT_SOURCE : 'local-process');
+
       const leakageFinding = computeLeakageScore({
         infrastructureDifferenceDetected: anyInfraDiff,
         applicationVisibleCorrelation: appVisibleResult.applicationVisible,
         largestMeaningfulPercentChange: largestShift,
         replicationClassification: repResult.classification,
+        measurementSource,
       });
+
+      const rationale = leakageFinding.rationale ||
+        `Leakage score ${leakageFinding.score} (${leakageFinding.band}) calculated via documented rubric.`;
 
       await this.query(
         `INSERT INTO leakage_findings (experiment_id, score, rubric, classification, rationale)
@@ -460,7 +524,7 @@ class ExperimentRunner {
           leakageFinding.score,
           JSON.stringify(leakageFinding.rubric),
           leakageFinding.band,
-          `Leakage score ${leakageFinding.score} (${leakageFinding.band}) calculated via documented rubric.`,
+          rationale,
         ]
       );
 
@@ -520,6 +584,8 @@ class ExperimentRunner {
           executedAt: new Date().toISOString(),
           targetDimension: experiment.target_dimension,
           replicationCount,
+          executionMode: effectiveExecutionMode,
+          measurementSource,
         },
       });
 

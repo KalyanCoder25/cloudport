@@ -1,7 +1,20 @@
 # Infrastructure B deployment.
-# Identical to Infrastructure A in application behavior, resource envelope,
-# probes, and storage mount path. The infrastructure difference is the
-# underlying PVC/StorageClass.
+#
+# CONTROLLED VARIABLE: CPU resource limits (Kubernetes cgroup enforcement).
+#
+# Infrastructure A (cloudport-app-a): cpu limit = 2000m  (2 full CPUs)
+# Infrastructure B (cloudport-app-b): cpu limit =  200m  (0.2 CPU — 10x more restricted)
+#
+# This is a GENUINE, KERNEL-ENFORCED infrastructure difference:
+#   - The Linux kernel CFS scheduler (via cgroup cpu.cfs_quota_us) enforces the
+#     200m limit inside the Kind node container runtime.
+#   - The workload (crypto.randomBytes, fs.writeFileSync, process.hrtime)
+#     involves CPU-bound operations whose latency IS affected by CPU throttling.
+#   - The storage mount path (/data) and PVC are kept identical between A and B
+#     to ensure CPU is the ONLY controlled variable.
+#
+# DO NOT describe this as storage throttling. The controlled variable is COMPUTE.
+# The experiment manifest (cpu-resource-isolation-v1.json) reflects this accurately.
 
 apiVersion: apps/v1
 kind: Deployment
@@ -48,7 +61,7 @@ spec:
               value: "/data"
 
             - name: DATABASE_URL
-              value: "postgres://cloudport:kalyan%40143@host.docker.internal:5432/cloudport"
+              value: "postgres://cloudport:changeme@host.docker.internal:5432/cloudport"
 
           readinessProbe:
             httpGet:
@@ -66,11 +79,11 @@ spec:
 
           resources:
             requests:
-              cpu: "500m"
+              cpu: "100m"       # 5x lower request than Infrastructure A (500m -> 100m)
               memory: "512Mi"
             limits:
-              cpu: "2"
-              memory: "4Gi"
+              cpu: "200m"       # THE CONTROLLED VARIABLE: 10x lower limit than Infra A (2000m -> 200m)
+              memory: "4Gi"     # Memory limit kept identical -- not a controlled variable
 
           volumeMounts:
             - name: storage

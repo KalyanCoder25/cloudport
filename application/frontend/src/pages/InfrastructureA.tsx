@@ -43,7 +43,7 @@ export default function InfrastructureA() {
       <div className="panel">
         <div className="panel-title">Live verification status</div>
         <EvidenceBadge kind="insufficient" label="NOT VERIFIED — REQUIRES HOST ENVIRONMENT" />
-        <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 12 }}>
+        <p className="text-secondary-13-mt12">
           This dashboard reads infrastructure snapshots from persisted evidence only. Connect a real Kind/Korifi
           cluster and run an experiment to populate live values here.
         </p>

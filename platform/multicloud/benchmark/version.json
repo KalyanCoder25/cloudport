@@ -1,0 +1,30 @@
+{
+  "_comment": "Benchmark application version manifest. Recorded alongside every experiment evidence artifact.",
+  "application": "online-boutique",
+  "version": "v0.10.1",
+  "source": "https://github.com/GoogleCloudPlatform/microservices-demo",
+  "sourceRef": "refs/tags/v0.10.1",
+  "namespace": "online-boutique",
+  "deploymentMethod": "kustomize",
+  "kustomizationPath": "platform/multicloud/benchmark/kustomization.yaml",
+  "upstreamManifestUrl": "https://github.com/GoogleCloudPlatform/microservices-demo/config/kubernetes-manifests.yaml",
+  "invariant": "This exact version and configuration is deployed to BOTH AWS EKS and GCP GKE. Do not modify between cluster deployments.",
+  "capstoneExperiment": "multicloud-portability-v1",
+  "services": [
+    "frontend",
+    "cartservice",
+    "productcatalogservice",
+    "currencyservice",
+    "paymentservice",
+    "shippingservice",
+    "emailservice",
+    "checkoutservice",
+    "recommendationservice",
+    "adservice",
+    "loadgenerator"
+  ],
+  "notes": [
+    "Image digests: resolve with `kubectl get pods -n online-boutique -o jsonpath='{range .items[*]}{.spec.containers[*].image}{\"\\n\"}{end}' --context=<ctx>` after deployment.",
+    "The Online Boutique includes a built-in loadgenerator service. For controlled experiments, disable it and use the standalone Locust deployment in platform/multicloud/locust/."
+  ]
+}

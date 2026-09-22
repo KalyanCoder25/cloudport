@@ -10,7 +10,7 @@ export function AsyncPanel<T>({
   loading: boolean;
   error: string | null;
   data: T | null;
-  empty?: string;
+  empty?: React.ReactNode;
   render: (data: T) => React.ReactNode;
 }) {
   if (loading) return <div className="empty-state">Loading...</div>;

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: online-boutique
+  labels:
+    cloudport/managed-by: "cloudport-capstone"
+    cloudport/experiment: "multicloud-portability-v1"
+    cloudport/benchmark: "online-boutique"
+  annotations:
+    cloudport.io/purpose: "Benchmark application namespace for multicloud-portability-v1"
+    cloudport.io/safety: "This namespace is designated for benchmark workloads only. Do not deploy CloudPort platform components here."

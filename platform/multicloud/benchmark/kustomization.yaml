@@ -1,0 +1,46 @@
+---
+# Online Boutique — Kustomization
+#
+# Deploys the Google Online Boutique microservices demo application
+# to the target Kubernetes cluster (AWS EKS or GCP GKE).
+#
+# CAPSTONE INVARIANT: This EXACT kustomization.yaml (same version, same
+# configuration) is applied to BOTH clusters. Do not modify between deployments.
+#
+# Application version: v0.10.1
+# Source: https://github.com/GoogleCloudPlatform/microservices-demo
+#
+# Deployment:
+#   # To AWS EKS
+#   kubectl apply --context=aws-eks-cloudport -k platform/multicloud/benchmark/
+#
+#   # To GCP GKE
+#   kubectl apply --context=gcp-gke-cloudport -k platform/multicloud/benchmark/
+#
+# Verification:
+#   kubectl get pods -n online-boutique --context=aws-eks-cloudport
+#   kubectl get pods -n online-boutique --context=gcp-gke-cloudport
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: online-boutique
+
+# Upstream Online Boutique manifests pinned to a specific git revision.
+# Using a tagged release ensures IDENTICAL manifests on both clusters.
+resources:
+  - https://github.com/GoogleCloudPlatform/microservices-demo/config/kubernetes-manifests.yaml?ref=v0.10.1
+  - namespace.yaml
+
+# Common labels applied to all resources — used by CloudPort for filtering
+commonLabels:
+  cloudport/experiment: "multicloud-portability-v1"
+  cloudport/benchmark: "online-boutique"
+  cloudport/benchmark-version: "v0.10.1"
+  cloudport/managed-by: "cloudport-capstone"
+
+# Common annotations for provenance tracking
+commonAnnotations:
+  cloudport.io/benchmark-version: "v0.10.1"
+  cloudport.io/benchmark-source: "github.com/GoogleCloudPlatform/microservices-demo"
+  cloudport.io/deployment-methodology: "kustomize"
+  cloudport.io/experiment: "multicloud-portability-v1"

@@ -1,0 +1,41 @@
+# ---------------------------------------------------------------------------
+# terraform.tfvars.example — GCP GKE Root
+#
+# Copy this file to terraform.tfvars and fill in real values.
+# NEVER commit terraform.tfvars — it is in .gitignore.
+# NEVER put GCP service account keys here.
+# Use: gcloud auth application-default login
+#
+# See docs/multicloud/security.md for the recommended authentication workflow.
+# ---------------------------------------------------------------------------
+
+# Project / environment identity
+project_name = "cloudport-capstone"
+environment  = "capstone"
+
+# REQUIRED: Your GCP project ID (e.g. "my-project-123456")
+gcp_project_id = "your-gcp-project-id"
+
+# GCP region (Mumbai: asia-south1)
+region = "asia-south1"
+
+# Network configuration (VPC-native, separate ranges for pods and services)
+vpc_cidr      = "10.0.0.0/16"
+pods_cidr     = "10.1.0.0/16"
+services_cidr = "10.2.0.0/20"
+
+# GKE cluster
+cluster_name_override    = "cloudport-capstone-gke"
+kubernetes_version       = "1.31"
+release_channel          = "REGULAR"
+enable_workload_identity = true
+deletion_protection      = false
+
+# Worker nodes — e2-medium is the minimum practical for Online Boutique
+# Increase to e2-standard-2 if nodes show memory pressure during load tests
+node_machine_type = "e2-medium"
+node_count        = 1
+node_min_count    = 1
+node_max_count    = 3
+node_disk_size_gb = 30
+node_disk_type    = "pd-standard"

@@ -23,7 +23,7 @@ export default function Telemetry() {
             const latest = trials[trials.length - 1];
             return (
               <>
-                <div className="metric-grid" style={{ marginBottom: 20 }}>
+                <div className="metric-grid margin-b-20">
                   {[
                     { label: 'P50', val: latest?.p50_ms },
                     { label: 'P90', val: latest?.p90_ms },
@@ -59,10 +59,10 @@ export default function Telemetry() {
                         </td>
                         <td>{t.request_count}</td>
                         <td className="mono">{t.throughput_ops_per_sec ? t.throughput_ops_per_sec.toFixed(1) : 'n/a'}</td>
-                        <td className="mono">{t.p50_ms !== null ? t.p50_ms.toFixed(2) : 'n/a'}</td>
-                        <td className="mono">{t.p95_ms !== null ? t.p95_ms.toFixed(2) : 'n/a'}</td>
-                        <td className="mono">{t.max_ms !== null ? t.max_ms.toFixed(2) : 'n/a'}</td>
-                        <td className="mono" style={{ fontSize: 11 }}>
+                        <td className="mono">{t.p50_ms != null ? t.p50_ms.toFixed(2) : 'n/a'}</td>
+                        <td className="mono">{t.p95_ms != null ? t.p95_ms.toFixed(2) : 'n/a'}</td>
+                        <td className="mono">{t.max_ms != null ? t.max_ms.toFixed(2) : 'n/a'}</td>
+                        <td className="mono text-11">
                           {new Date(t.recorded_at).toLocaleTimeString()}
                         </td>
                       </tr>

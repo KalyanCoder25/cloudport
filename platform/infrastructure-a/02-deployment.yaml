@@ -44,7 +44,7 @@ spec:
               value: "/data"
 
             - name: DATABASE_URL
-              value: "postgres://cloudport:kalyan%40143@host.docker.internal:5432/cloudport"
+              value: "postgres://cloudport:changeme@host.docker.internal:5432/cloudport"
 
           readinessProbe:
             httpGet:

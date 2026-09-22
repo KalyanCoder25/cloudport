@@ -57,3 +57,17 @@ test('Infrastructure A and B agree on the storage mount path (only the underlyin
   assert.equal(claimA, 'cloudport-storage-a');
   assert.equal(claimB, 'cloudport-storage-b');
 });
+
+test('Infrastructure A and B define controlled CPU limits', () => {
+  const manifestsA = loadManifests(INFRA_A_DIR);
+  const manifestsB = loadManifests(INFRA_B_DIR);
+  const deploymentA = findDeployment(manifestsA, 'cloudport-app-a');
+  const deploymentB = findDeployment(manifestsB, 'cloudport-app-b');
+
+  const containerA = deploymentA.spec.template.spec.containers[0];
+  const containerB = deploymentB.spec.template.spec.containers[0];
+
+  assert.equal(containerA.resources?.limits?.cpu, '2', 'Infra A baseline CPU limit must be 2');
+  assert.equal(containerB.resources?.limits?.cpu, '200m', 'Infra B constrained CPU limit must be 200m');
+  assert.equal(containerA.resources?.limits?.memory, containerB.resources?.limits?.memory, 'Memory limits must match');
+});

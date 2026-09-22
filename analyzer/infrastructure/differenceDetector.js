@@ -58,13 +58,35 @@ function comparePlatform(a, b) {
 function compareCompute(a, b) {
   const nodesA = sortByName(a.nodes);
   const nodesB = sortByName(b.nodes);
-  const equal = deepEqual(nodesA, nodesB);
+  const nodesEqual = deepEqual(nodesA, nodesB);
+
+  // Also compare container-level resource limits/requests.
+  // These are set per-deployment and represent the Kubernetes-enforced cgroup boundaries.
+  // A difference here (e.g. CPU limit 2000m vs 200m) is a genuine, kernel-enforced
+  // infrastructure difference that the application workload will observe as latency variation.
+  const crA = a.containerResources || null;
+  const crB = b.containerResources || null;
+  const resourcesEqual = deepEqual(crA, crB);
+
+  const equal = nodesEqual && resourcesEqual;
+
+  const detail = {};
+  if (!nodesEqual) {
+    detail.nodesA = nodesA;
+    detail.nodesB = nodesB;
+  }
+  if (!resourcesEqual) {
+    detail.containerResourcesA = crA;
+    detail.containerResourcesB = crB;
+  }
+
   return {
     dimension: 'Compute',
     differenceFound: !equal,
-    detail: equal ? {} : { nodesA, nodesB },
+    detail: equal ? {} : detail,
   };
 }
+
 
 function compareNetwork(a, b) {
   const npA = normalizeForCompare(a.networkPolicies);

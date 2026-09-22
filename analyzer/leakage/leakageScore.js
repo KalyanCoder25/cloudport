@@ -46,6 +46,9 @@ function scoreBand(score) {
  * @param {boolean} input.applicationVisibleCorrelation
  * @param {number} [input.largestMeaningfulPercentChange] - absolute value, e.g. 42.5 for 42.5%
  * @param {'CONFIRMED_REPLICATED'|'VARIABLE_REPLICATION'|'INSUFFICIENT_REPLICATION'} input.replicationClassification
+ * @param {string} [input.measurementSource] - must be 'kubernetes-pod-exec' for a valid live score;
+ *   any other value triggers INSUFFICIENT_EVIDENCE (score 0) to prevent local-host measurements
+ *   from generating an inflated score.
  */
 function computeLeakageScore(input) {
   const {
@@ -53,7 +56,39 @@ function computeLeakageScore(input) {
     applicationVisibleCorrelation = false,
     largestMeaningfulPercentChange = 0,
     replicationClassification = 'INSUFFICIENT_REPLICATION',
+    measurementSource,
   } = input;
+
+  // GUARD: Reject scoring if measurements did not originate from a Kubernetes pod
+  // or from a Locust load generator running inside Kubernetes.
+  //
+  // Valid measurement sources:
+  //   'kubernetes-pod-exec' — local kind-korifi experiments (kubectl exec into pod)
+  //   'locust-kubernetes'   — multi-cloud experiments (Locust running in-cluster)
+  //
+  // This prevents local Windows filesystem measurements (or any non-pod source) from
+  // being scored as if they were live A/B infrastructure observations.
+  const VALID_MEASUREMENT_SOURCES = ['kubernetes-pod-exec', 'locust-kubernetes'];
+  if (measurementSource !== undefined && !VALID_MEASUREMENT_SOURCES.includes(measurementSource)) {
+    return {
+      score: 0,
+      band: 'INSUFFICIENT_EVIDENCE',
+      rubric: {
+        infrastructureDifferenceDetected: 0,
+        applicationVisibleCorrelation: 0,
+        metricShiftMagnitude: 0,
+        replicationConfirmed: 0,
+      },
+      weights: RUBRIC_WEIGHTS,
+      measurementSource,
+      rationale:
+        `Leakage scoring refused: measurementSource is "${measurementSource}" but must be ` +
+        `one of: ${VALID_MEASUREMENT_SOURCES.join(', ')}. ` +
+        'Measurements from local host filesystems, temp directories, or unverified sources ' +
+        'cannot be used to attribute infrastructure-induced application behavior differences.',
+    };
+  }
+
 
   const rubric = {};
 

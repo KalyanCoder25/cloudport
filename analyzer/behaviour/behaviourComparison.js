@@ -53,13 +53,14 @@ function compareMetric(metric, valuesA, valuesB, significance = null) {
  * Compare a full telemetry summary object (keyed by metric name -> array of
  * per-trial values) between A and B.
  */
-function compareTelemetrySummaries(summaryA, summaryB) {
+function compareTelemetrySummaries(summaryA, summaryB, significanceMap = {}) {
   const metrics = new Set([...Object.keys(summaryA), ...Object.keys(summaryB)]);
   const results = [];
   for (const metric of metrics) {
     const valuesA = summaryA[metric] || [];
     const valuesB = summaryB[metric] || [];
-    results.push(compareMetric(metric, valuesA, valuesB));
+    const sig = significanceMap ? (significanceMap[metric] || null) : null;
+    results.push(compareMetric(metric, valuesA, valuesB, sig));
   }
   return results;
 }

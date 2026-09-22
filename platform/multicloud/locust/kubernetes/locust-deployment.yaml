@@ -1,0 +1,102 @@
+---
+# Locust Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: locust
+  labels:
+    cloudport/managed-by: "cloudport-capstone"
+    cloudport/experiment: "multicloud-portability-v1"
+  annotations:
+    cloudport.io/purpose: "Dedicated namespace for Locust load generation. Separate from benchmark namespace (online-boutique)."
+---
+# Locust Deployment — Headless mode for controlled load tests
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: locust-master
+  namespace: locust
+  labels:
+    app: locust-master
+    cloudport/managed-by: "cloudport-capstone"
+    cloudport/experiment: "multicloud-portability-v1"
+    cloudport/component: "load-generator"
+  annotations:
+    cloudport.io/locustfile-version: "multicloud-portability-v1"
+    cloudport.io/benchmark: "online-boutique-v0.10.1"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: locust-master
+  template:
+    metadata:
+      labels:
+        app: locust-master
+        cloudport/managed-by: "cloudport-capstone"
+    spec:
+      containers:
+        - name: locust
+          image: locustio/locust:2.31.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: web
+              containerPort: 8089
+              protocol: TCP
+            - name: master-p1
+              containerPort: 5557
+              protocol: TCP
+            - name: master-p2
+              containerPort: 5558
+              protocol: TCP
+          command:
+            - locust
+            - --master
+            - --headless
+            - --users=$(LOCUST_USERS)
+            - --spawn-rate=$(LOCUST_SPAWN_RATE)
+            - --run-time=$(LOCUST_DURATION_SECONDS)s
+            - --host=$(LOCUST_HOST)
+            - --html=/results/locust-report.html
+            - --csv=/results/locust
+            - --logfile=/results/locust.log
+            - -f
+            - /locust/locustfile.py
+          env:
+            - name: LOCUST_USERS
+              value: "50"
+            - name: LOCUST_SPAWN_RATE
+              value: "5"
+            - name: LOCUST_DURATION_SECONDS
+              value: "300"
+            - name: LOCUST_HOST
+              value: "http://frontend.online-boutique.svc.cluster.local:80"
+            # CloudPort provenance — set by the orchestrator before each trial
+            - name: CLOUDPORT_EXPERIMENT_ID
+              value: "multicloud-portability-v1"
+            - name: CLOUDPORT_TRIAL_ID
+              value: "trial-001"
+            - name: CLOUDPORT_TARGET_CONTEXT
+              value: "REPLACE_WITH_CONTEXT"
+            - name: CLOUDPORT_CLOUD_PROVIDER
+              value: "REPLACE_WITH_PROVIDER"
+            - name: CLOUDPORT_RESULTS_PATH
+              value: "/results/trial-provenance.json"
+          volumeMounts:
+            - name: locustfile
+              mountPath: /locust
+            - name: results
+              mountPath: /results
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      volumes:
+        - name: locustfile
+          configMap:
+            name: locust-config
+        - name: results
+          emptyDir: {}

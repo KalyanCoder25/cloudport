@@ -1,0 +1,38 @@
+# ---------------------------------------------------------------------------
+# terraform.tfvars.example — AWS EKS Root
+#
+# Copy this file to terraform.tfvars and fill in real values.
+# NEVER commit terraform.tfvars — it is in .gitignore.
+# NEVER put AWS access keys here. Use AWS_PROFILE or IAM Identity Center.
+#
+# See docs/multicloud/security.md for the recommended authentication workflow.
+# ---------------------------------------------------------------------------
+
+# Project / environment identity
+project_name = "cloudport-capstone"
+environment  = "capstone"
+
+# AWS region (Mumbai: ap-south-1)
+region = "ap-south-1"
+
+# Network configuration
+vpc_cidr             = "10.0.0.0/16"
+private_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+public_subnet_cidrs  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+
+# EKS cluster
+cluster_name_override  = "cloudport-capstone-eks"
+kubernetes_version     = "1.31"
+
+# Worker nodes — t3.medium is the minimum practical for Online Boutique
+# Increase to t3.large if nodes show memory pressure during load tests
+node_instance_type = "t3.medium"
+node_desired_count = 3
+node_min_count     = 2
+node_max_count     = 5
+node_disk_size_gb  = 20
+
+# API endpoint access — restrict to your IP range in production
+# 0.0.0.0/0 is acceptable for a time-boxed capstone experiment
+cluster_endpoint_public_access       = true
+cluster_endpoint_public_access_cidrs = ["0.0.0.0/0"]

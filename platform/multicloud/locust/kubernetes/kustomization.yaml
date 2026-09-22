@@ -1,0 +1,50 @@
+---
+# Locust Load Generator — Kustomization
+#
+# Deploys the Locust master (headless mode) to the target cloud cluster.
+# Apply AFTER the benchmark namespace is live and Online Boutique is deployed.
+#
+# CAPSTONE INVARIANT: This EXACT kustomization (same locustfile, same image,
+# same env vars) is applied to BOTH AWS EKS and GCP GKE clusters before each
+# paired trial. The locustfile.py is embedded via ConfigMap from the canonical
+# source (platform/multicloud/locust/locustfile.py).
+#
+# Usage:
+#   # AWS EKS
+#   kubectl apply --context=aws-eks-cloudport -k platform/multicloud/locust/kubernetes/
+#
+#   # GCP GKE
+#   kubectl apply --context=gcp-gke-cloudport -k platform/multicloud/locust/kubernetes/
+#
+# After deploying, override per-trial provenance env vars via:
+#   kubectl set env deployment/locust-master -n locust \
+#     CLOUDPORT_TRIAL_ID=trial-001 \
+#     CLOUDPORT_TARGET_CONTEXT=aws-eks-cloudport \
+#     CLOUDPORT_CLOUD_PROVIDER=AWS \
+#     --context=aws-eks-cloudport
+#
+# Monitor progress:
+#   kubectl logs -f deployment/locust-master -n locust --context=aws-eks-cloudport
+#
+# Collect results:
+#   kubectl exec -n locust deployment/locust-master --context=aws-eks-cloudport \
+#     -- cat /results/trial-provenance.json
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - locust-configmap.yaml
+  - locust-deployment.yaml
+  - locust-service.yaml
+
+# Common labels for all Locust resources
+commonLabels:
+  cloudport/experiment: "multicloud-portability-v1"
+  cloudport/component: "load-generator"
+  cloudport/managed-by: "cloudport-capstone"
+
+# Common annotations for provenance
+commonAnnotations:
+  cloudport.io/locustfile-version: "multicloud-portability-v1"
+  cloudport.io/benchmark: "online-boutique-v0.10.1"
+  cloudport.io/experiment: "multicloud-portability-v1"

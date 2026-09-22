@@ -1,0 +1,189 @@
+{
+  "_comment": "Multi-Cloud Portability Experiment v1. Controlled benchmark: Online Boutique. Infrastructure A: AWS EKS. Infrastructure B: GCP GKE.",
+  "_rationale": "The capstone requires deploying the same benchmark application to two cloud providers using the same methodology and observing differences via CloudPort. This experiment uses Online Boutique (Google microservices demo) as the controlled benchmark workload, Locust for reproducible load generation, and the CloudPort multi-cloud inspector for infrastructure profiling. Provider differences (load balancer type, StorageClass provisioner, CNI, IAM model) are documented and classified as INFRASTRUCTURE_DIFFERENCE — they are not automatically classified as leakage. Application-visible measurements (request latency, error rate, throughput) are compared under the same load profile across repeated trials.",
+  "name": "multicloud-portability-v1",
+  "version": "1.0.0",
+  "description": "Multi-cloud infrastructure portability experiment comparing Online Boutique performance on AWS EKS (Infrastructure A) vs GCP GKE (Infrastructure B) under the same Locust load profile. Measures application-visible differences to assess infrastructure leakage.",
+
+  "executionMode": "MULTICLOUD_KUBERNETES",
+  "measurementSource": "locust-kubernetes",
+
+  "infrastructureA": {
+    "role": "BASELINE",
+    "cloudProvider": "AWS",
+    "kubernetesContext": "aws-eks-cloudport",
+    "clusterName": "cloudport-capstone-eks",
+    "region": "ap-south-1",
+    "location": "Mumbai",
+    "nodeType": "t3.medium",
+    "nodeCount": 3,
+    "kubernetesVersion": "1.31",
+    "storageProvisioner": "ebs.csi.aws.com",
+    "loadBalancerType": "AWS ELB/NLB",
+    "cni": "AWS VPC CNI",
+    "iamModel": "AWS IAM + node instance roles"
+  },
+
+  "infrastructureB": {
+    "role": "COMPARISON",
+    "cloudProvider": "GCP",
+    "kubernetesContext": "gcp-gke-cloudport",
+    "clusterName": "cloudport-capstone-gke",
+    "region": "asia-south1",
+    "location": "Mumbai",
+    "nodeType": "e2-medium",
+    "nodeCount": 3,
+    "kubernetesVersion": "1.31",
+    "storageProvisioner": "pd.csi.storage.gke.io",
+    "loadBalancerType": "GCP Cloud Load Balancer",
+    "cni": "GKE Dataplane v2 (eBPF)",
+    "iamModel": "GCP IAM + Workload Identity"
+  },
+
+  "benchmark": {
+    "application": "online-boutique",
+    "version": "v0.10.1",
+    "source": "https://github.com/GoogleCloudPlatform/microservices-demo",
+    "namespace": "online-boutique",
+    "deploymentMethod": "kustomize",
+    "kustomizationPath": "platform/multicloud/benchmark/kustomization.yaml",
+    "invariant": "IDENTICAL kustomization applied to both clusters — same manifests, same image tags"
+  },
+
+  "loadProfile": {
+    "tool": "locust",
+    "locustfilePath": "platform/multicloud/locust/locustfile.py",
+    "locustfileVersion": "multicloud-portability-v1",
+    "users": 50,
+    "spawnRate": 5,
+    "durationSeconds": 300,
+    "host": "http://frontend.online-boutique.svc.cluster.local:80",
+    "invariant": "IDENTICAL load profile applied to both clusters in each trial"
+  },
+
+  "replication": {
+    "pairedTrials": 5,
+    "description": "5 paired trials: AWS then GCP (or interleaved), same load profile per pair. Minimum 5 trials required by the statistical framework."
+  },
+
+  "controlledVariables": [
+    "benchmark application version (online-boutique v0.10.1)",
+    "Kustomize configuration (identical)",
+    "Locust load profile (50 users, 5/s spawn, 300s)",
+    "Kubernetes version (1.31)",
+    "Node count (3)",
+    "Benchmark namespace (online-boutique)",
+    "Locust namespace (locust)"
+  ],
+
+  "unavoidableDifferences": [
+    {
+      "dimension": "LoadBalancer",
+      "aws": "AWS ELB/NLB",
+      "gcp": "GCP Cloud Load Balancer",
+      "classification": "INFRASTRUCTURE_DIFFERENCE",
+      "note": "Different load balancer implementations. NOT automatically classified as leakage. Application-visible impact (latency, error rate) must be measured."
+    },
+    {
+      "dimension": "StorageClass",
+      "aws": "ebs.csi.aws.com (EBS)",
+      "gcp": "pd.csi.storage.gke.io (Persistent Disk)",
+      "classification": "INFRASTRUCTURE_DIFFERENCE",
+      "note": "Different storage provisioners. Online Boutique uses Redis for cart (in-memory) — storage differences unlikely to be application-visible. Documented for completeness."
+    },
+    {
+      "dimension": "CNI",
+      "aws": "AWS VPC CNI (overlay-less)",
+      "gcp": "GKE Dataplane v2 (eBPF-based)",
+      "classification": "INFRASTRUCTURE_DIFFERENCE",
+      "note": "Different network data planes. May affect pod-to-pod latency. Application-visible impact must be measured."
+    },
+    {
+      "dimension": "NodeType",
+      "aws": "t3.medium (2 vCPU, 4 GB RAM, Intel/AMD)",
+      "gcp": "e2-medium (2 vCPU, 4 GB RAM, custom Arm/x86)",
+      "classification": "INFRASTRUCTURE_DIFFERENCE",
+      "note": "Nominally equivalent node capacity. CPU architecture and memory subsystem differences are provider-specific and unavoidable."
+    },
+    {
+      "dimension": "IAM",
+      "aws": "AWS IAM + node instance profiles",
+      "gcp": "GCP IAM + Workload Identity",
+      "classification": "INFRASTRUCTURE_DIFFERENCE",
+      "note": "Different identity mechanisms. Not application-visible for Online Boutique workloads."
+    }
+  ],
+
+  "metrics": {
+    "primary": [
+      "latency_p50_ms",
+      "latency_p95_ms",
+      "latency_p99_ms",
+      "requests_per_second",
+      "error_rate"
+    ],
+    "secondary": [
+      "request_count",
+      "success_count",
+      "failure_count",
+      "duration_seconds"
+    ],
+    "infrastructure": [
+      "kubernetesVersion",
+      "nodeCount",
+      "cpuCapacity",
+      "memoryCapacity",
+      "cpuAllocatable",
+      "memoryAllocatable",
+      "storageClasses",
+      "loadBalancerType",
+      "cloudProvider"
+    ]
+  },
+
+  "statisticalFramework": {
+    "test": "paired-t-test",
+    "significanceLevel": 0.05,
+    "minimumPairedTrials": 5,
+    "insufficientSamplePolicy": "INSUFFICIENT_SAMPLE — never fabricate significance",
+    "note": "The existing CloudPort statisticalTests.js is reused unchanged."
+  },
+
+  "leakageFramework": {
+    "rubric": "existing CloudPort leakageScore.js (0-100, four-component rubric)",
+    "validMeasurementSources": ["locust-kubernetes"],
+    "causalGovernance": "POTENTIAL_LEAKAGE or CORRELATION_ONLY (existing causalGovernance.js)",
+    "note": "Infrastructure differences are classified separately from application leakage. Leakage is only classified when the causal chain (infra diff → app measurement → repeated trials → statistical analysis) supports it."
+  },
+
+  "provenance": {
+    "required": [
+      "experimentId",
+      "trialId",
+      "infrastructureId",
+      "cloudProvider",
+      "kubernetesContext",
+      "namespace",
+      "locustfileVersion",
+      "benchmarkVersion",
+      "executionMode",
+      "measurementSource",
+      "startTimestamp",
+      "endTimestamp"
+    ]
+  },
+
+  "hypotheses": [
+    "The same Online Boutique workload under the same Locust load profile will exhibit measurable differences in request latency between AWS EKS and GCP GKE due to provider-specific load balancer and network data plane implementations.",
+    "Any latency difference will replicate consistently across 5 paired trials.",
+    "Infrastructure differences (load balancer type, CNI, StorageClass) are real and will be detected by the multi-cloud inspector — but do not automatically constitute application leakage."
+  ],
+
+  "successCriteria": {
+    "minimumPairedTrials": 5,
+    "measurementSource": "locust-kubernetes",
+    "statisticalTest": "paired-t-test",
+    "significanceLevel": 0.05,
+    "note": "With n=5, significant results require large effect sizes. Results reported honestly regardless of significance. No fabrication of measurements."
+  }
+}

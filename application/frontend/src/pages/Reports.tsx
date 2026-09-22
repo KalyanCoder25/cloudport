@@ -19,7 +19,7 @@ export default function Reports() {
           data={report.data}
           empty="No scientific report generated yet."
           render={(markdown) => (
-            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--text-primary)' }}>
+            <pre className="report-pre">
               {markdown}
             </pre>
           )}

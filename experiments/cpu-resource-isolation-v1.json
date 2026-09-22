@@ -1,0 +1,65 @@
+{
+  "_comment": "CPU Resource Isolation Experiment v1. Controlled variable: COMPUTE (CPU resource limits).",
+  "_rationale": "Storage IOPS throttling is not achievable with the rancher.io/local-path provisioner in Kind. This experiment uses CPU resource limits as the controlled variable instead. CPU limits are kernel-enforced (cgroup CFS scheduler), genuinely observable in application latency, and accurately described here. Infrastructure A has 2000m CPU limit; Infrastructure B has 200m CPU limit (10x more restricted).",
+  "name": "cpu-resource-isolation-v1",
+  "description": "Measures application-visible performance impact of a 10x CPU resource limit difference between Infrastructure A (2000m CPU) and Infrastructure B (200m CPU). Tests whether Kubernetes cgroup CPU throttling on Infrastructure B produces statistically detectable latency increases in a storage-bound workload. Controlled variable: COMPUTE. Storage paths are identical between A and B.",
+  "applicationVersion": "cloudport:1.0.0",
+  "workload": {
+    "type": "STORAGE",
+    "seed": 773311,
+    "concurrency": 4,
+    "operationCount": 50,
+    "description": "Deterministic PRNG-seeded write/read/delete workload exercising /data (PVC-backed) inside each pod. CPU-bound operations (crypto.randomBytes, SHA256, PRNG) amplify the latency impact of CPU throttling."
+  },
+  "controlledVariable": "COMPUTE",
+  "targetDimension": "Compute,Storage",
+  "excludedDimensions": ["Network", "Platform", "ResourceQuotas", "LimitRanges"],
+  "replication": {
+    "pairedTrials": 5,
+    "description": "5 paired trials (A and B executed with the same seed per pair). Seed advances by 1000 per pair for workload variety."
+  },
+  "executionMode": "KUBERNETES",
+  "infrastructureA": {
+    "deployment": "cloudport-app-a",
+    "namespace": "cloudport",
+    "cpuLimit": "2000m",
+    "cpuRequest": "500m",
+    "pvc": "cloudport-storage-a",
+    "storageClass": "standard",
+    "storagePath": "/data",
+    "role": "BASELINE"
+  },
+  "infrastructureB": {
+    "deployment": "cloudport-app-b",
+    "namespace": "cloudport",
+    "cpuLimit": "200m",
+    "cpuRequest": "100m",
+    "pvc": "cloudport-storage-b",
+    "storageClass": "standard-throttled",
+    "storagePath": "/data",
+    "role": "CONSTRAINED",
+    "constraintMechanism": "Kubernetes cgroup CFS CPU quota (cpu.cfs_quota_us via cpu resource limit). This is kernel-enforced, not advisory."
+  },
+  "invariants": {
+    "applicationVersion": "cloudport:1.0.0",
+    "workloadType": "STORAGE",
+    "concurrency": 4,
+    "operationCount": 50,
+    "prngSeed": 773311,
+    "targetDimension": "Compute,Storage",
+    "excludedDimensions": ["Network", "Platform", "ResourceQuotas", "LimitRanges"]
+  },
+  "storageThrottlingNote": "STORAGE THROTTLING IS NOT IMPLEMENTED. Both StorageClasses (standard and standard-throttled) use rancher.io/local-path with parameters:{} and are functionally identical. The storage path /data is the same in both pods. The only controlled infrastructure difference is the CPU resource limit.",
+  "hypotheses": [
+    "Infrastructure B (200m CPU limit) will exhibit higher p95/p99 latency than Infrastructure A (2000m CPU limit) due to CFS scheduler throttling of CPU-bound workload operations.",
+    "The latency difference will replicate consistently across 5 paired trials with the same workload definition."
+  ],
+  "successCriteria": {
+    "minimumPairedTrials": 5,
+    "computeDifferenceMustBeDetected": true,
+    "measurementSource": "kubernetes-pod-exec",
+    "statisticalTest": "paired-t-test",
+    "significanceLevel": 0.05,
+    "note": "With n=5, the test is valid but has limited power. A significant result at alpha=0.05 with n=5 requires a large effect size (Cohen's d > 1.5). Results will be reported honestly regardless of significance."
+  }
+}

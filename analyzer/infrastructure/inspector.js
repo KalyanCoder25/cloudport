@@ -68,6 +68,8 @@ function normalizeProfile(raw) {
       cpuCapacity: n.cpuCapacity ?? null,
       memoryCapacity: n.memoryCapacity ?? null,
     })),
+    containerResources: raw.containerResources ?? null,
+    deploymentResources: raw.deploymentResources ?? null,
     storageClasses: (raw.storageClasses || []).map((sc) => ({
       name: sc.name,
       provisioner: sc.provisioner,
@@ -108,4 +110,11 @@ function notVerifiedProfile(infrastructure) {
   };
 }
 
-module.exports = { InfrastructureInspector, normalizeProfile, notVerifiedProfile };
+function createLiveInspector(options = {}) {
+  const { createLiveK8sClient } = require('./k8sClient');
+  return new InfrastructureInspector({
+    clientFactory: () => createLiveK8sClient(options),
+  });
+}
+
+module.exports = { InfrastructureInspector, createLiveInspector, normalizeProfile, notVerifiedProfile };

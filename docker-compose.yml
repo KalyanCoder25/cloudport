@@ -36,8 +36,50 @@ services:
       PORT: 4000
       APP_VERSION: cloudport:1.0.0
       INFRA_IDENTITY: docker-compose-local
+      OTEL_METRICS_PORT: 9464
+      STATS_SERVICE_URL: http://statistics:8090
     ports:
       - "4000:4000"
+      - "9464:9464" # OpenTelemetry Prometheus exporter (scraped by the prometheus service below)
+
+  # SciPy-backed statistical analysis service (analyzer/telemetry/scipyStatsClient.js
+  # calls this when STATS_SERVICE_URL is set; the pure-JS implementation in
+  # statisticalTests.js remains the fallback if this is unreachable).
+  statistics:
+    build:
+      context: ./services/statistics
+    container_name: cloudport-statistics
+    ports:
+      - "8090:8090"
+
+  # Scrapes the backend's OTel-exported metrics and the statistics service's
+  # own metrics. Local development / observability convenience only, same as
+  # the rest of this file -- Infrastructure A/B are unaffected.
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: cloudport-prometheus
+    volumes:
+      - ./platform/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+      - statistics
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: cloudport-grafana
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: changeme
+    volumes:
+      - ./platform/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./platform/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
 
 volumes:
   cloudport-pg-data:

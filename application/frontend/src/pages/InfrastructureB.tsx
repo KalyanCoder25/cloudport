@@ -51,7 +51,7 @@ export default function InfrastructureB() {
       </div>
       <div className="panel">
         <div className="panel-title">Provisioning safety gates</div>
-        <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+        <p className="text-secondary-13">
           12 checks run before any cluster mutation (context, cluster identity, protected namespaces/StorageClasses,
           NetworkPolicy absence, exact resource inventory, manifest + server-side dry-run, image prerequisite). See{' '}
           <code>platform/infrastructure-b/provision.sh</code>.

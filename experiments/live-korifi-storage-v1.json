@@ -1,0 +1,52 @@
+{
+  "name": "live-korifi-storage-v1",
+  "description": "Controlled live comparison of application behavior under Infrastructure A vs Infrastructure B on live kind-korifi cluster.",
+  "application": {
+    "name": "cloudport-app",
+    "version": "cloudport:1.0.0"
+  },
+  "targetDimension": "STORAGE",
+  "controlledVariable": "STORAGE",
+  "excludedDimensions": [
+    "APPLICATION",
+    "CPU",
+    "MEMORY",
+    "NETWORK",
+    "WORKLOAD"
+  ],
+  "resourceEnvelope": {
+    "cpu": "2.0",
+    "memory": "4Gi"
+  },
+  "workload": {
+    "type": "STORAGE",
+    "prngSeed": 554433,
+    "concurrency": 2,
+    "operationCount": 25
+  },
+  "replication": {
+    "pairedTrials": 2
+  },
+  "safety": {
+    "requireParityValidation": true,
+    "requireInfrastructureAHealthy": true,
+    "requireInfrastructureBHealthy": true,
+    "minimumTrialsForReplicationClaim": 2
+  },
+  "invariants": {
+    "applicationVersion": "cloudport:1.0.0",
+    "workloadType": "STORAGE",
+    "controlledVariable": "STORAGE",
+    "targetDimension": "STORAGE",
+    "excludedDimensions": [
+      "APPLICATION",
+      "CPU",
+      "MEMORY",
+      "NETWORK",
+      "WORKLOAD"
+    ],
+    "prngSeed": 554433,
+    "concurrency": 2,
+    "operationCount": 25
+  }
+}

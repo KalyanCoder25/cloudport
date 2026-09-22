@@ -102,7 +102,7 @@ function createInMemoryDb(initialData = {}) {
 
     // INSERT INTO experiment_trials
     if (/^INSERT INTO experiment_trials/i.test(s)) {
-      const [experiment_id, trial_index, infrastructure, seed, status, checksum] = params;
+      const [experiment_id, trial_index, infrastructure, seed, status, checksum, execution_mode] = params;
       const id = nextUuid('trial');
       const row = {
         id,
@@ -112,6 +112,7 @@ function createInMemoryDb(initialData = {}) {
         seed,
         status,
         checksum,
+        execution_mode: execution_mode || 'LOCAL',
         started_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
       };
@@ -136,7 +137,7 @@ function createInMemoryDb(initialData = {}) {
       const [
         trial_id, request_count, success_count, failure_count,
         latencies_ms, throughput_ops_per_sec, errors,
-        p50_ms, p90_ms, p95_ms, p99_ms, max_ms,
+        p50_ms, p90_ms, p95_ms, p99_ms, max_ms, execution_provenance,
       ] = params;
       const id = nextUuid('tel');
       const row = {
@@ -153,6 +154,7 @@ function createInMemoryDb(initialData = {}) {
         p95_ms,
         p99_ms,
         max_ms,
+        execution_provenance: typeof execution_provenance === 'string' ? JSON.parse(execution_provenance) : (execution_provenance || null),
         recorded_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
       };
@@ -792,3 +794,164 @@ test('validateParity throws 404 error when experiment does not exist', async () 
     /Experiment non-existent-id not found/
   );
 });
+
+test('KUBERNETES mode uses podDispatch, sets execution_mode, and persists execution_provenance', async () => {
+  const db = createInMemoryDb();
+  const exp = createSampleExperiment({
+    replication_count: 1,
+    manifest: {
+      workload: { prngSeed: 42, concurrency: 2, operationCount: 10 },
+      replication: { pairedTrials: 1 },
+      executionMode: 'KUBERNETES',
+    },
+  });
+  db.tables.experiments.push(exp);
+
+  let podDispatchCalled = 0;
+  let localWorkloadCalled = 0;
+
+  const runner = createExperimentRunner({
+    query: db.query,
+    inspector: createFakeInspector(),
+    executionMode: 'KUBERNETES',
+    podDispatch: async ({ infrastructure, seed }) => {
+      podDispatchCalled++;
+      return {
+        workloadResult: {
+          requestCount: 10,
+          successCount: 10,
+          failureCount: 0,
+          latenciesMs: [5, 6, 7],
+          throughputOpsPerSec: 50,
+          errors: [],
+        },
+        provenance: {
+          executionMode: 'KUBERNETES',
+          measurementSource: 'kubernetes-pod-exec',
+          kubernetesContext: 'kind-korifi',
+          namespace: 'cloudport',
+          podName: `cloudport-app-${infrastructure.toLowerCase()}-abcde`,
+          containerName: 'cloudport-app',
+          infrastructureId: infrastructure,
+        },
+      };
+    },
+    runWorkload: async () => {
+      localWorkloadCalled++;
+      throw new Error('Should not call local workload in KUBERNETES mode');
+    },
+  });
+
+  await runner.validateParity(exp.id);
+  const result = await runner.executeExperiment(exp.id);
+
+  assert.equal(result.status, 'COMPLETED');
+  assert.equal(podDispatchCalled, 2); // 1 pair = 2 trials (A + B)
+  assert.equal(localWorkloadCalled, 0);
+
+  // Check persisted trials and telemetry
+  const trials = db.tables.experiment_trials.filter((t) => t.experiment_id === exp.id);
+  assert.equal(trials.length, 2);
+  for (const trial of trials) {
+    assert.equal(trial.execution_mode, 'KUBERNETES');
+    assert.equal(trial.status, 'SUCCEEDED');
+  }
+
+  const telemetry = db.tables.telemetry;
+  assert.equal(telemetry.length, 2);
+  for (const record of telemetry) {
+    assert.ok(record.execution_provenance);
+    assert.equal(record.execution_provenance.measurementSource, 'kubernetes-pod-exec');
+    assert.ok(record.execution_provenance.podName);
+  }
+});
+
+test('KUBERNETES mode fails trial and aborts experiment if pod dispatch fails (no local fallback)', async () => {
+  const db = createInMemoryDb();
+  const exp = createSampleExperiment({
+    manifest: {
+      workload: { prngSeed: 42, concurrency: 2, operationCount: 10 },
+      replication: { pairedTrials: 1 },
+      executionMode: 'KUBERNETES',
+    },
+  });
+  db.tables.experiments.push(exp);
+
+  let localWorkloadCalled = 0;
+
+  const runner = createExperimentRunner({
+    query: db.query,
+    inspector: createFakeInspector(),
+    executionMode: 'KUBERNETES',
+    podDispatch: async () => {
+      throw new Error('kubectl exec failed: connection refused');
+    },
+    runWorkload: async () => {
+      localWorkloadCalled++;
+      return { requestCount: 1, successCount: 1, failureCount: 0, latenciesMs: [5], throughputOpsPerSec: 10 };
+    },
+  });
+
+  await runner.validateParity(exp.id);
+  await assert.rejects(
+    async () => {
+      await runner.executeExperiment(exp.id);
+    },
+    /kubectl exec failed/
+  );
+
+  assert.equal(localWorkloadCalled, 0, 'Must NOT fall back to local execution');
+
+  const finalExp = db.tables.experiments.find((e) => e.id === exp.id);
+  assert.equal(finalExp.status, 'ABORTED');
+
+  const trials = db.tables.experiment_trials.filter((t) => t.experiment_id === exp.id);
+  assert.equal(trials.length, 1);
+  assert.equal(trials[0].status, 'FAILED');
+});
+
+test('computes statistical significance when 5 paired trials are executed', async () => {
+  const db = createInMemoryDb();
+  const exp = createSampleExperiment({
+    replication_count: 5,
+    manifest: {
+      workload: { prngSeed: 100, concurrency: 2, operationCount: 10 },
+      replication: { pairedTrials: 5 },
+    },
+  });
+  db.tables.experiments.push(exp);
+
+  const runner = createExperimentRunner({
+    query: db.query,
+    inspector: createFakeInspector(),
+    executionMode: 'LOCAL',
+    runWorkload: async ({ infrastructure }) => {
+      // Infra B is throttled, higher latencies
+      const baseLatency = infrastructure === 'A' ? 10 : 50;
+      return {
+        requestCount: 10,
+        successCount: 10,
+        failureCount: 0,
+        latenciesMs: [baseLatency, baseLatency + 1, baseLatency + 2],
+        throughputOpsPerSec: infrastructure === 'A' ? 100 : 20,
+        errors: [],
+      };
+    },
+  });
+
+  await runner.validateParity(exp.id);
+  const result = await runner.executeExperiment(exp.id);
+
+  assert.equal(result.status, 'COMPLETED');
+  const comparisons = db.tables.behaviour_comparisons.filter((c) => c.experiment_id === exp.id);
+  assert.ok(comparisons.length > 0);
+
+  // At least one comparison should have a non-null significance object with n=5
+  const p95Comp = comparisons.find((c) => c.metric === 'p95_ms');
+  assert.ok(p95Comp, 'Expected p95_ms comparison');
+  const sig = typeof p95Comp.significance === 'string' ? JSON.parse(p95Comp.significance) : p95Comp.significance;
+  assert.ok(sig, 'Expected significance result for p95_ms');
+  assert.equal(sig.n, 5);
+  assert.ok(sig.interpretation === 'STATISTICALLY_SIGNIFICANT' || sig.interpretation === 'NOT_STATISTICALLY_SIGNIFICANT');
+});
+

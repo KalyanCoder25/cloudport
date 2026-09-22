@@ -1,0 +1,17 @@
+# Scrape configuration for CloudPort's local docker-compose stack.
+# The backend exposes OpenTelemetry metrics in Prometheus exposition format
+# directly (see application/backend/src/telemetry/otel.js) -- there is no
+# separate OTel Collector in this deployment size.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: cloudport-backend
+    static_configs:
+      - targets: ["backend:9464"]
+
+  - job_name: cloudport-statistics
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["statistics:8090"]

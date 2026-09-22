@@ -26,6 +26,8 @@ model.
 - [Experiment execution](#experiment-execution)
 - [Telemetry, leakage, evidence, reports](#telemetry-leakage-evidence-reports)
 - [Recovery](#recovery)
+- [Local application deployment (Korifi)](#local-application-deployment-korifi)
+- [Observability](#observability)
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
 - [Cleanup](#cleanup)
@@ -289,6 +291,28 @@ Fault injection (`analyzer/behaviour/faultInjection.js`) is scoped to the
 `cloudport` namespace only and is always reversible/auditable. Recovery
 verification (`analyzer/recovery/recoveryVerification.js`) reports what was
 actually observed -- it never asserts a recovery guarantee without evidence.
+
+## Local application deployment (Korifi)
+
+User applications (`POST /api/deployments` with `target_providers: ["local_k8s"]`)
+deploy through the real Cloud Foundry CLI against Korifi on `kind-korifi` -- `cf push`,
+not raw `kubectl apply`. See [`docs/architecture/local-deployment.md`](docs/architecture/local-deployment.md)
+for how it works and the fix for a known local-cluster gotcha (kpack builds stuck
+in `ImagePullBackOff` after a Docker Desktop restart).
+
+## Observability
+
+```bash
+docker compose up -d backend statistics prometheus grafana
+```
+
+The backend exports OpenTelemetry metrics in Prometheus format on `:9464/metrics`;
+`services/statistics/` is a SciPy-backed statistics service
+(`analyzer/telemetry/scipyStatsClient.js` calls it when `STATS_SERVICE_URL` is set,
+falling back to the pure-JS implementation otherwise); Prometheus scrapes both;
+Grafana (`http://localhost:3001`, anonymous viewer or admin/changeme) auto-provisions
+a "CloudPort Overview" dashboard. Full detail in
+[`docs/architecture/observability.md`](docs/architecture/observability.md).
 
 ## Testing
 
